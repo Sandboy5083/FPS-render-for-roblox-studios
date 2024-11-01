@@ -1,0 +1,101 @@
+local RunService = game:GetService('RunService')
+
+local CHARACTER_FRAMERATE = 10 -- How many FPS character animations move at
+
+local Character_Check_Delay = 1 -- How often the system looks for new characters
+
+local Characters = {}
+
+local Character_Joint_References = {
+	UpperTorso = 'Waist',
+	LowerTorso = 'Root',
+	RightUpperArm = 'RightShoulder',
+	RightLowerArm = 'RightElbow',
+	RightHand = 'RightWrist',
+	Head = 'Neck',
+	LeftUpperArm = 'LeftShoulder',
+	LeftLowerArm = 'LeftElbow',
+	LeftHand = 'LeftWrist',
+	LeftFoot = 'LeftAnkle',
+	LeftLowerLeg = 'LeftKnee',
+	LeftUpperLeg = 'LeftHip',
+	RightFoot = 'RightAnkle',
+	RightLowerLeg = 'RightKnee',
+	RightUpperLeg = 'RightHip',
+}
+
+local Character_Transform_Cache = {}
+
+
+
+local Last_Character_Get = os.clock()-10
+local Last_Read_Frame = os.clock()
+
+function onScreen(cf)
+	
+	local LV = workspace.CurrentCamera.CFrame.LookVector
+	local RLV1 = CFrame.new(workspace.CurrentCamera.CFrame.p, cf.p).LookVector
+	local n = LV:Dot(RLV1)
+	
+	local fov = workspace.CurrentCamera.MaxAxisFieldOfView
+	local solve = ((125.787 - fov) / 0.0000279832) ^ 0.3022
+	
+	return n > 0 and n >= solve*0.01	
+end
+
+function getCharacters()
+	Last_Character_Get = os.clock()
+	
+	Characters = {}
+	
+	for i,v in pairs(game.Players:GetPlayers()) do
+		if v.Character and v.Character.PrimaryPart and v.Character:FindFirstChild('Humanoid') and v.Character.Humanoid.Health > 0 then
+			table.insert(Characters, v.Character)
+		end
+	end
+end
+
+
+function readTransforms(Character)
+	Character_Transform_Cache[Character] = {}
+	for JointParent,JointName in pairs(Character_Joint_References) do
+		if Character:FindFirstChild(JointParent) and Character[JointParent]:FindFirstChild(JointName) then
+			local Joint = Character[JointParent][JointName]
+			Character_Transform_Cache[Character][Joint] = Joint.Transform
+		end
+	end
+end
+
+function writeTransforms()
+	for Character,JointTable in pairs(Character_Transform_Cache) do
+		if Character and Character.Parent and Character.PrimaryPart and onScreen(Character.PrimaryPart.CFrame) then
+			for Joint,Transform in pairs(JointTable) do
+				if Joint and Joint.Parent then
+					Joint.Transform = Transform
+				end
+			end
+		end
+	end
+end
+
+
+
+function Operate()
+	if os.clock()-Last_Character_Get >= Character_Check_Delay then
+		getCharacters()
+	end
+	if os.clock() - Last_Read_Frame >= 1/CHARACTER_FRAMERATE then
+		Last_Read_Frame = os.clock()
+		for i,v in pairs(Characters) do
+			if v and v.Parent and v.PrimaryPart and onScreen(v.PrimaryPart.CFrame) then
+				readTransforms(v)
+			end
+		end
+	else
+		writeTransforms()
+	end
+end
+
+RunService.Stepped:Connect(function()
+	Operate()
+end)
